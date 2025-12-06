@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useQuery } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useAuth } from "@/lib/auth-context";
 import Header from "@/components/Header";
@@ -15,6 +15,7 @@ import {
   Users,
   QrCode,
   Loader2,
+  Flag,
 } from "lucide-react";
 
 export default function AdminPage() {
@@ -23,6 +24,23 @@ export default function AdminPage() {
   const campaigns = useQuery(api.campaigns.list, {});
   const scanEvents = useQuery(api.scanEvents.list, { limit: 20 });
   const stats = useQuery(api.scanEvents.getStats);
+  const pendingReports = useQuery(api.reports.list, { status: "pending" });
+  const updateReportStatus = useMutation(api.reports.updateStatus);
+  const [updatingReportId, setUpdatingReportId] = useState<string | null>(null);
+
+  const handleStatusChange = async (
+    reportId: string,
+    newStatus: "reviewed" | "dismissed"
+  ) => {
+    try {
+      setUpdatingReportId(reportId);
+      await updateReportStatus({ id: reportId as any, status: newStatus });
+    } catch (error) {
+      console.error("Failed to update report status", error);
+    } finally {
+      setUpdatingReportId(null);
+    }
+  };
 
   useEffect(() => {
     if (!authLoading && (!user || user.role !== "admin")) {
@@ -233,6 +251,62 @@ export default function AdminPage() {
               ))}
             </div>
           </div>
+        </div>
+
+        {/* Incident Reports */}
+        <div className="mt-8 bg-white rounded-2xl border border-gray-100 shadow-sm">
+          <div className="p-4 border-b border-gray-100 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Flag className="w-5 h-5 text-red-600" />
+              <h2 className="font-semibold text-gray-900">Incident Reports</h2>
+            </div>
+            <span className="text-sm text-gray-500">
+              {pendingReports?.length ?? 0} pending
+            </span>
+          </div>
+          {pendingReports === undefined ? (
+            <div className="p-8 flex items-center justify-center">
+              <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+            </div>
+          ) : pendingReports.length === 0 ? (
+            <div className="p-8 text-center text-gray-500">
+              No pending reports right now. Great job keeping donors safe!
+            </div>
+          ) : (
+            <div className="divide-y divide-gray-50">
+              {pendingReports.map((report) => (
+                <div key={report._id} className="p-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium text-gray-900">
+                      {report.reason}
+                    </p>
+                    <p className="text-xs text-gray-500 font-mono break-all">
+                      {report.qrPayload || "No QR payload provided"}
+                    </p>
+                    <p className="text-xs text-gray-400">
+                      Contact: {report.reporterContact || "Not provided"}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => handleStatusChange(report._id, "reviewed")}
+                      disabled={updatingReportId === report._id}
+                      className="px-3 py-2 bg-emerald-50 text-emerald-700 text-sm font-medium rounded-lg hover:bg-emerald-100 disabled:opacity-60 disabled:cursor-not-allowed"
+                    >
+                      Mark Reviewed
+                    </button>
+                    <button
+                      onClick={() => handleStatusChange(report._id, "dismissed")}
+                      disabled={updatingReportId === report._id}
+                      className="px-3 py-2 bg-red-50 text-red-700 text-sm font-medium rounded-lg hover:bg-red-100 disabled:opacity-60 disabled:cursor-not-allowed"
+                    >
+                      Dismiss
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </main>
     </div>
